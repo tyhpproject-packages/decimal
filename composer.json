@@ -1,9 +1,9 @@
 {
     "name": "tyhp/decimal",
-    "description": "Tyhp runtime decimal (PHP 8.4) — arbitrary-precision decimal arithmetic",
+    "description": "Tyhp runtime decimal (PHP 8.5) — arbitrary-precision decimal arithmetic",
     "type": "library",
     "license": "Apache-2.0",
-    "version": "804.0.1",
+    "version": "805.0.1",
     "extra": {
         "tyhp": {
             "interopContractVersion": 1,
@@ -21,7 +21,7 @@
         }
     },
     "require": {
-        "php": ">=8.4",
+        "php": ">=8.5",
         "tyhp/core": "802.0.* || 803.0.* || 804.0.* || 805.0.*"
     },
     "require-dev": {
