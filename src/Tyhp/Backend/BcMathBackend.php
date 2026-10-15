@@ -10,6 +10,14 @@ namespace Tyhp\Backend;
 
 final class BcMathBackend implements \Tyhp\Backend\DecimalBackend
 {
+    /**
+     * True when every digit is zero. `bccomp()` at the result scale would also report a
+     * non-zero value such as `0.001` as zero at scale 2.
+     */
+    private function isZero(string $value): bool
+    {
+        return \ltrim(\str_replace(['-', '.'], '', $value), '0') === '';
+    }
     public function add(string $a, string $b, int $scale): string
     {
         return \bcadd($a, $b, $scale);
@@ -24,14 +32,14 @@ final class BcMathBackend implements \Tyhp\Backend\DecimalBackend
     }
     public function divide(string $a, string $b, int $scale): string
     {
-        if (\bccomp($b, '0', $scale) === 0) {
+        if ($this->isZero($b)) {
             throw new \DivisionByZeroError('Division by zero');
         }
         return \bcdiv($a, $b, $scale);
     }
     public function modulo(string $a, string $b, int $scale): string
     {
-        if (\bccomp($b, '0', $scale) === 0) {
+        if ($this->isZero($b)) {
             throw new \DivisionByZeroError('Modulo by zero');
         }
         return \bcmod($a, $b, $scale);
@@ -42,7 +50,7 @@ final class BcMathBackend implements \Tyhp\Backend\DecimalBackend
     }
     public function sqrt(string $value, int $scale): string
     {
-        if (\bccomp($value, '0', $scale) < 0) {
+        if (\str_starts_with($value, '-') && !$this->isZero($value)) {
             throw new \InvalidArgumentException('Square root of a negative number is not supported');
         }
         return \bcsqrt($value, $scale);

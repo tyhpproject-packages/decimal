@@ -8,6 +8,10 @@ declare(strict_types=1);
 
 namespace Tyhp\Backend;
 
+/**
+ * Operands are parsed exactly at their own scale. Each operation computes the exact result and
+ * truncates it toward zero to the requested scale, which is what bcmath does.
+ */
 final class GmpBackend implements \Tyhp\Backend\DecimalBackend
 {
     private static array $scaleFactors = [];
@@ -15,7 +19,19 @@ final class GmpBackend implements \Tyhp\Backend\DecimalBackend
     {
         return self::$scaleFactors[$scale] ??= \gmp_pow(\gmp_init(10), $scale);
     }
-    private function toScaled(string $value, int $scale): \GMP
+    /**
+     * Number of digits after the decimal point.
+     */
+    private function scaleOf(string $value): int
+    {
+        $dot = \strpos($value, '.');
+        return ($dot === false) ? 0 : ((\strlen($value) - $dot) - 1);
+    }
+    /**
+     * The value's digits as an integer, i.e. the value multiplied by 10 to the power of its own
+     * scale. Nothing is cut off.
+     */
+    private function parse(string $value): \GMP
     {
         $negative = false;
         if (\str_starts_with($value, '-')) {
@@ -25,14 +41,22 @@ final class GmpBackend implements \Tyhp\Backend\DecimalBackend
         $parts = \explode('.', $value, 2);
         $intPart = (string) (($parts[0] === '') ? '0' : $parts[0]);
         $fracPart = (string) ($parts[1] ?? '');
-        if (\strlen($fracPart) > $scale) {
-            $fracPart = \substr($fracPart, 0, $scale);
-        } else {
-            $fracPart = \str_pad($fracPart, $scale, '0');
-        }
-        $combined = $intPart . $fracPart;
-        $gmp = \gmp_init($combined);
+        $gmp = \gmp_init($intPart . $fracPart, 10);
         return $negative ? \gmp_neg($gmp) : $gmp;
+    }
+    /**
+     * Moves an integer from one decimal scale to another. Widening is exact; narrowing truncates
+     * toward zero.
+     */
+    private function rescale(\GMP $value, int $from, int $to): \GMP
+    {
+        if ($to === $from) {
+            return $value;
+        }
+        if ($to > $from) {
+            return \gmp_mul($value, self::scaleFactor($to - $from));
+        }
+        return \gmp_div_q($value, self::scaleFactor($from - $to), \GMP_ROUND_ZERO);
     }
     private function fromScaled(\GMP $value, int $scale): string
     {
@@ -53,70 +77,71 @@ final class GmpBackend implements \Tyhp\Backend\DecimalBackend
     }
     public function add(string $a, string $b, int $scale): string
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
-        return $this->fromScaled(\gmp_add($sa, $sb), $scale);
+        $sa = $this->scaleOf($a);
+        $sb = $this->scaleOf($b);
+        $working = \max($sa, $sb);
+        $sum = \gmp_add($this->rescale($this->parse($a), $sa, $working), $this->rescale($this->parse($b), $sb, $working));
+        return $this->fromScaled($this->rescale($sum, $working, $scale), $scale);
     }
     public function subtract(string $a, string $b, int $scale): string
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
-        return $this->fromScaled(\gmp_sub($sa, $sb), $scale);
+        $sa = $this->scaleOf($a);
+        $sb = $this->scaleOf($b);
+        $working = \max($sa, $sb);
+        $difference = \gmp_sub($this->rescale($this->parse($a), $sa, $working), $this->rescale($this->parse($b), $sb, $working));
+        return $this->fromScaled($this->rescale($difference, $working, $scale), $scale);
     }
     public function multiply(string $a, string $b, int $scale): string
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
-        $product = \gmp_mul($sa, $sb);
-        $divisor = self::scaleFactor($scale);
-        return $this->fromScaled(\gmp_div_q($product, $divisor), $scale);
+        $product = \gmp_mul($this->parse($a), $this->parse($b));
+        return $this->fromScaled($this->rescale($product, $this->scaleOf($a) + $this->scaleOf($b), $scale), $scale);
     }
     public function divide(string $a, string $b, int $scale): string
     {
-        $sb = $this->toScaled($b, $scale);
-        if (\gmp_cmp($sb, \gmp_init(0)) === 0) {
+        $divisor = $this->parse($b);
+        if (\gmp_cmp($divisor, \gmp_init(0)) === 0) {
             throw new \DivisionByZeroError('Division by zero');
         }
-        $sa = $this->toScaled($a, $scale);
-        $multiplier = self::scaleFactor($scale);
-        $numerator = \gmp_mul($sa, $multiplier);
-        return $this->fromScaled(\gmp_div_q($numerator, $sb), $scale);
+        $numerator = \gmp_mul($this->parse($a), self::scaleFactor($this->scaleOf($b) + $scale));
+        $denominator = \gmp_mul($divisor, self::scaleFactor($this->scaleOf($a)));
+        return $this->fromScaled(\gmp_div_q($numerator, $denominator, \GMP_ROUND_ZERO), $scale);
     }
     public function modulo(string $a, string $b, int $scale): string
     {
-        $sb = $this->toScaled($b, $scale);
-        if (\gmp_cmp($sb, \gmp_init(0)) === 0) {
+        $divisor = $this->parse($b);
+        if (\gmp_cmp($divisor, \gmp_init(0)) === 0) {
             throw new \DivisionByZeroError('Modulo by zero');
         }
-        $sa = $this->toScaled($a, $scale);
-        $remainder = \gmp_div_r($sa, $sb);
-        return $this->fromScaled($remainder, $scale);
+        $sa = $this->scaleOf($a);
+        $sb = $this->scaleOf($b);
+        $working = \max($sa, $sb);
+        $remainder = \gmp_div_r($this->rescale($this->parse($a), $sa, $working), $this->rescale($divisor, $sb, $working), \GMP_ROUND_ZERO);
+        return $this->fromScaled($this->rescale($remainder, $working, $scale), $scale);
     }
     public function power(string $base, int $exponent, int $scale): string
     {
-        if ($exponent === 0) {
-            return $this->fromScaled($this->toScaled('1', $scale), $scale);
+        if ($exponent < 0) {
+            throw new \InvalidArgumentException('Negative exponents are not supported');
         }
-        $sBase = $this->toScaled($base, $scale);
-        $result = \gmp_pow($sBase, $exponent);
-        $scaleFactor = self::scaleFactor($scale * ($exponent - 1));
-        return $this->fromScaled(\gmp_div_q($result, $scaleFactor), $scale);
+        $result = \gmp_pow($this->parse($base), $exponent);
+        return $this->fromScaled($this->rescale($result, $this->scaleOf($base) * $exponent, $scale), $scale);
     }
     public function sqrt(string $value, int $scale): string
     {
-        $sValue = $this->toScaled($value, $scale);
-        if (\gmp_cmp($sValue, \gmp_init(0)) < 0) {
+        $parsed = $this->parse($value);
+        if (\gmp_cmp($parsed, \gmp_init(0)) < 0) {
             throw new \InvalidArgumentException('Square root of a negative number is not supported');
         }
-        $multiplier = self::scaleFactor($scale);
-        $scaled = \gmp_mul($sValue, $multiplier);
-        $sqrtResult = \gmp_sqrt($scaled);
-        return $this->fromScaled($sqrtResult, $scale);
+        $radicand = $this->rescale($parsed, $this->scaleOf($value), 2 * $scale);
+        return $this->fromScaled(\gmp_sqrt($radicand), $scale);
     }
+    /**
+     * Compares the two values after cutting each to `$scale` digits (the `bccomp()` contract).
+     */
     public function compare(string $a, string $b, int $scale): int
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
+        $sa = $this->rescale($this->parse($a), $this->scaleOf($a), $scale);
+        $sb = $this->rescale($this->parse($b), $this->scaleOf($b), $scale);
         $cmp = \gmp_cmp($sa, $sb);
         if ($cmp < 0) {
             return -1;

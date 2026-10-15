@@ -19,15 +19,23 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
     public function __construct(float|int|string|\Tyhp\Contracts\DecimalConvertible|null $value = null, ?int $scale = null, int $roundingMode = \PHP_ROUND_HALF_UP)
     {
         $this->roundingMode = $roundingMode;
+        if (($scale !== null) && ($scale < 0)) {
+            throw new \ValueError(('Decimal scale must be 0 or greater, ' . $scale) . ' given');
+        }
         if ($value instanceof \Tyhp\Contracts\DecimalConvertible) {
             $decimal = $value->__toDecimal();
-            $this->value = $decimal->value;
-            $this->scale = ($scale ?? $decimal->scale);
+            if ($scale === null) {
+                $this->value = $decimal->value;
+                $this->scale = $decimal->scale;
+                return;
+            }
+            $this->scale = $scale;
+            $this->value = $this->normalizeToScale($decimal->value, $scale);
             return;
         }
         if ($value === null) {
-            $this->value = '0';
             $this->scale = ($scale ?? 0);
+            $this->value = (($scale !== null) ? $this->normalizeToScale('0', $scale) : '0');
             return;
         }
         $strValue = \is_float($value) ? $this->floatToString($value) : \strval($value);
@@ -135,7 +143,7 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
     {
         self::$backend = $backend;
     }
-    public static function __asNumeric(self $o)
+    public static function __asNumeric(self $o): float
     {
         if ($o instanceof self) {
             $value = $o;
@@ -144,7 +152,16 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $o);
         }
     }
-    public static function __add(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __negate(self $o): static
+    {
+        if ($o instanceof self) {
+            $value = $o;
+            return $value->negate();
+        } else {
+            throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $o);
+        }
+    }
+    public static function __add(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): static
     {
         if ($l instanceof self && $r instanceof self) {
             $left = $l;
@@ -154,11 +171,15 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             $left = $l;
             $right = $r;
             return $left->add($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->add($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __subtract(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __subtract(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): static
     {
         if ($l instanceof self && $r instanceof self) {
             $left = $l;
@@ -168,11 +189,15 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             $left = $l;
             $right = $r;
             return $left->subtract($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->subtract($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __multiply(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __multiply(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): static
     {
         if ($l instanceof self && $r instanceof self) {
             $left = $l;
@@ -182,11 +207,15 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             $left = $l;
             $right = $r;
             return $left->multiply($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->multiply($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __divide(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __divide(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): static
     {
         if ($l instanceof self && $r instanceof self) {
             $left = $l;
@@ -196,11 +225,15 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             $left = $l;
             $right = $r;
             return $left->divide($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->divide($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __mod(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __mod(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): static
     {
         if ($l instanceof self && $r instanceof self) {
             $left = $l;
@@ -210,11 +243,15 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             $left = $l;
             $right = $r;
             return $left->modulo($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->modulo($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __pow(self $l, int $r)
+    public static function __pow(self $l, int $r): static
     {
         if ($l instanceof self && \is_int($r)) {
             $left = $l;
@@ -224,62 +261,100 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __isEqual(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __isEqual(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): bool
     {
         if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
             $left = $l;
             $right = $r;
             return $left->equals($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->equals($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __isNotEqual(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __isNotEqual(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): bool
     {
         if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
             $left = $l;
             $right = $r;
             return !$left->equals($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return !(new self($left))->equals($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __isLessThan(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __isLessThan(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): bool
     {
         if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
             $left = $l;
             $right = $r;
             return $left->lessThan($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->lessThan($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __isLessThanOrEqual(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __isLessThanOrEqual(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): bool
     {
         if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
             $left = $l;
             $right = $r;
             return $left->lessThanOrEqual($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->lessThanOrEqual($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __isGreaterThanOrEqual(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __isGreaterThan(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): bool
+    {
+        if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
+            $left = $l;
+            $right = $r;
+            return $left->greaterThan($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->greaterThan($right);
+        } else {
+            throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
+        }
+    }
+    public static function __isGreaterThanOrEqual(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): bool
     {
         if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
             $left = $l;
             $right = $r;
             return $left->greaterThanOrEqual($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->greaterThanOrEqual($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
     }
-    public static function __compare(self $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r)
+    public static function __compare(self|float|int|string $l, self|float|int|string|\Tyhp\Contracts\DecimalConvertible $r): int
     {
         if ($l instanceof self && ($r instanceof self || \is_float($r) || \is_int($r) || \is_string($r) || $r instanceof \Tyhp\Contracts\DecimalConvertible)) {
             $left = $l;
             $right = $r;
             return $left->compareTo($right);
+        } elseif ((\is_float($l) || \is_int($l) || \is_string($l)) && $r instanceof self) {
+            $left = $l;
+            $right = $r;
+            return (new self($left))->compareTo($right);
         } else {
             throw new \Tyhp\Exceptions\InvalidParametersForOperatorOverloadException(static::class, __FUNCTION__, $l, $r);
         }
@@ -318,6 +393,9 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
         $fracPart = (string) ($parts[1] ?? '');
         if ($scale === 0) {
             $result = $intPart;
+            if ((($this->roundingMode === \PHP_ROUND_HALF_UP) && ($fracPart !== '')) && ((int) $fracPart[0] >= 5)) {
+                $result = $this->addOneToIntString($intPart);
+            }
         } else {
             if (\strlen($fracPart) > $scale) {
                 $nextDigit = (int) $fracPart[$scale];
@@ -495,12 +573,29 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
     {
         return $this;
     }
+    /**
+     * Returns the same number at a different scale. Widening pads with zeros. Narrowing rounds
+     * half up when the rounding mode is PHP_ROUND_HALF_UP and truncates otherwise.
+     *
+     * @throws \ValueError When $scale is negative.
+     */
     public function withScale(int $scale): self
     {
         return new self($this->value, $scale, $this->roundingMode);
     }
+    /**
+     * Rounds to $precision digits after the decimal point using one of the PHP_ROUND_* modes.
+     *
+     * A tie exists only when every discarded digit is exactly 5 followed by zeros; anything
+     * above that rounds away from zero in every half-* mode. Unknown modes truncate.
+     *
+     * @throws \ValueError When $precision is negative.
+     */
     public function round(int $precision = 0, int $mode = \PHP_ROUND_HALF_UP): self
     {
+        if ($precision < 0) {
+            throw new \ValueError(('Rounding precision must be 0 or greater, ' . $precision) . ' given');
+        }
         $parts = \explode('.', $this->value, 2);
         $intPart = (string) $parts[0];
         $fracPart = (string) ($parts[1] ?? '');
@@ -513,17 +608,20 @@ final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contrac
         }
         $digitAfter = ($precision < \strlen($fracPart)) ? (int) $fracPart[$precision] : 0;
         $truncFrac = ($precision > 0) ? \substr($fracPart, 0, $precision) : '';
+        $restIsZero = \ltrim(\substr($fracPart, $precision + 1), '0') === '';
+        $aboveMidpoint = ($digitAfter > 5) || (($digitAfter === 5) && !$restIsZero);
+        $isTie = ($digitAfter === 5) && $restIsZero;
         $shouldRoundUp = false;
         if ($mode === \PHP_ROUND_HALF_UP) {
             $shouldRoundUp = ($digitAfter >= 5);
         } elseif ($mode === \PHP_ROUND_HALF_DOWN) {
-            $shouldRoundUp = ($digitAfter > 5);
+            $shouldRoundUp = $aboveMidpoint;
         } elseif ($mode === \PHP_ROUND_HALF_EVEN) {
             $lastKept = ($precision > 0) ? (int) $fracPart[$precision - 1] : (int) $intPart[\strlen($intPart) - 1];
-            $shouldRoundUp = (($digitAfter > 5) || (($digitAfter === 5) && (($lastKept % 2) !== 0)));
+            $shouldRoundUp = ($aboveMidpoint || ($isTie && (($lastKept % 2) !== 0)));
         } elseif ($mode === \PHP_ROUND_HALF_ODD) {
             $lastKept = ($precision > 0) ? (int) $fracPart[$precision - 1] : (int) $intPart[\strlen($intPart) - 1];
-            $shouldRoundUp = (($digitAfter > 5) || (($digitAfter === 5) && (($lastKept % 2) === 0)));
+            $shouldRoundUp = ($aboveMidpoint || ($isTie && (($lastKept % 2) === 0)));
         }
         if ($shouldRoundUp && ($precision > 0)) {
             $fracDigits = \str_split($truncFrac);

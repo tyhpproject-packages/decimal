@@ -2,16 +2,16 @@
 /**
  * AUTO-GENERATED, DO NOT EDIT
  * Compiler: 805.1.0.0
- * Generated: 2026-10-05T14:06:32.5346910Z
+ * Generated: 2026-10-15T16:29:46.8382890Z
  */
 namespace Tyhp {
-    function decimal(float|int|string|\Tyhp\Contracts\DecimalConvertible|null $value = null): decimal;
+    function decimal(float|int|string|\Tyhp\Contracts\DecimalConvertible|null $value = null): \Tyhp\Decimal;
     #[\Tyhp\GenericRuntime(erased: false, aliasFactory: "DecimalCoercible", layouts: [1], compiler: "805.1.0.0")]
     type DecimalCoercible = float|int|string|\Tyhp\Contracts\DecimalConvertible;
     final class Decimal implements \Tyhp\Contracts\DecimalConvertible, \Tyhp\Contracts\FloatConvertible, \Tyhp\Contracts\IntConvertible, \Tyhp\Contracts\StringConvertible, \JsonSerializable {
-        public string $value;
-        public int $scale;
-        public int $roundingMode;
+        readonly public string $value;
+        readonly public int $scale;
+        readonly public int $roundingMode;
         public function __construct(\Tyhp\DecimalCoercible|null $value = null, ?int $scale = null, int $roundingMode = \PHP_ROUND_HALF_UP): void;
         public function add(\Tyhp\DecimalCoercible $operand): self;
         public function subtract(\Tyhp\DecimalCoercible $operand): self;
@@ -43,7 +43,21 @@ namespace Tyhp {
         public function isPositive(): bool;
         public function isNegative(): bool;
         public function __toDecimal(): self;
+        /**
+        * Returns the same number at a different scale. Widening pads with zeros. Narrowing rounds
+        * half up when the rounding mode is PHP_ROUND_HALF_UP and truncates otherwise.
+        *
+        * @throws \ValueError When $scale is negative.
+        */
         public function withScale(int $scale): self;
+        /**
+        * Rounds to $precision digits after the decimal point using one of the PHP_ROUND_* modes.
+        *
+        * A tie exists only when every discarded digit is exactly 5 followed by zeros; anything
+        * above that rounds away from zero in every half-* mode. Unknown modes truncate.
+        *
+        * @throws \ValueError When $precision is negative.
+        */
         public function round(int $precision = 0, int $mode = \PHP_ROUND_HALF_UP): self;
         public function floor(): self;
         public function ceil(): self;
@@ -57,41 +71,57 @@ namespace Tyhp {
         public static function avg(self ...$values): self;
         public static function getBackendName(): string;
         public static function setBackend(\Tyhp\Backend\DecimalBackend $backend): void;
-        public static function __asNumeric(self $value): mixed;
-        public static function __add(self $left, self $right): mixed;
-        public static function __subtract(self $left, self $right): mixed;
-        public static function __multiply(self $left, self $right): mixed;
-        public static function __divide(self $left, self $right): mixed;
-        public static function __mod(self $left, self $right): mixed;
-        public static function __pow(self $left, int $right): mixed;
-        public static function __isEqual(self $left, self|\Tyhp\DecimalCoercible $right): mixed;
-        public static function __isNotEqual(self $left, self|\Tyhp\DecimalCoercible $right): mixed;
-        public static function __isLessThan(self $left, self|\Tyhp\DecimalCoercible $right): mixed;
-        public static function __isLessThanOrEqual(self $left, self|\Tyhp\DecimalCoercible $right): mixed;
-        public static function __isGreaterThanOrEqual(self $left, self|\Tyhp\DecimalCoercible $right): mixed;
-        public static function __compare(self $left, self|\Tyhp\DecimalCoercible $right): mixed;
+        public static function __asNumeric(self $value): float;
+        public static function __negate(self $value): self;
+        public static function __add(self $left, self $right): self;
+        public static function __subtract(self $left, self $right): self;
+        public static function __multiply(self $left, self $right): self;
+        public static function __divide(self $left, self $right): self;
+        public static function __mod(self $left, self $right): self;
+        public static function __pow(self $left, int $right): self;
+        public static function __isEqual(self $left, self|\Tyhp\DecimalCoercible $right): bool;
+        public static function __isNotEqual(self $left, self|\Tyhp\DecimalCoercible $right): bool;
+        public static function __isLessThan(self $left, self|\Tyhp\DecimalCoercible $right): bool;
+        public static function __isLessThanOrEqual(self $left, self|\Tyhp\DecimalCoercible $right): bool;
+        public static function __isGreaterThan(self $left, self|\Tyhp\DecimalCoercible $right): bool;
+        public static function __isGreaterThanOrEqual(self $left, self|\Tyhp\DecimalCoercible $right): bool;
+        public static function __compare(self $left, self|\Tyhp\DecimalCoercible $right): int;
         public static function __from(int|float|string $from): self;
         public function __toInt(): int;
         public function __toFloat(): float;
         public function __toString(): string;
-        extension operator +(self $value): mixed => self::__asNumeric($value);
-        extension operator +(self $left, self $right): mixed => self::__add($left, $right);
-        extension operator +(self $left, \Tyhp\DecimalCoercible $right): mixed => self::__add($left, $right);
-        extension operator -(self $left, self $right): mixed => self::__subtract($left, $right);
-        extension operator -(self $left, \Tyhp\DecimalCoercible $right): mixed => self::__subtract($left, $right);
-        extension operator *(self $left, self $right): mixed => self::__multiply($left, $right);
-        extension operator *(self $left, \Tyhp\DecimalCoercible $right): mixed => self::__multiply($left, $right);
-        extension operator /(self $left, self $right): mixed => self::__divide($left, $right);
-        extension operator /(self $left, \Tyhp\DecimalCoercible $right): mixed => self::__divide($left, $right);
-        extension operator %(self $left, self $right): mixed => self::__mod($left, $right);
-        extension operator %(self $left, \Tyhp\DecimalCoercible $right): mixed => self::__mod($left, $right);
-        extension operator **(self $left, int $right): mixed => self::__pow($left, $right);
-        extension operator ==(self $left, self|\Tyhp\DecimalCoercible $right): mixed => self::__isEqual($left, $right);
-        extension operator !=(self $left, self|\Tyhp\DecimalCoercible $right): mixed => self::__isNotEqual($left, $right);
-        extension operator <(self $left, self|\Tyhp\DecimalCoercible $right): mixed => self::__isLessThan($left, $right);
-        extension operator <=(self $left, self|\Tyhp\DecimalCoercible $right): mixed => self::__isLessThanOrEqual($left, $right);
-        extension operator >=(self $left, self|\Tyhp\DecimalCoercible $right): mixed => self::__isGreaterThanOrEqual($left, $right);
-        extension operator <=>(self $left, self|\Tyhp\DecimalCoercible $right): mixed => self::__compare($left, $right);
+        extension operator +(self $value): float => self::__asNumeric($value);
+        extension operator -(self $value): self => self::__negate($value);
+        extension operator +(self $left, self $right): self => self::__add($left, $right);
+        extension operator +(self $left, \Tyhp\DecimalCoercible $right): self => self::__add($left, $right);
+        extension operator -(self $left, self $right): self => self::__subtract($left, $right);
+        extension operator -(self $left, \Tyhp\DecimalCoercible $right): self => self::__subtract($left, $right);
+        extension operator *(self $left, self $right): self => self::__multiply($left, $right);
+        extension operator *(self $left, \Tyhp\DecimalCoercible $right): self => self::__multiply($left, $right);
+        extension operator /(self $left, self $right): self => self::__divide($left, $right);
+        extension operator /(self $left, \Tyhp\DecimalCoercible $right): self => self::__divide($left, $right);
+        extension operator %(self $left, self $right): self => self::__mod($left, $right);
+        extension operator %(self $left, \Tyhp\DecimalCoercible $right): self => self::__mod($left, $right);
+        extension operator **(self $left, int $right): self => self::__pow($left, $right);
+        extension operator ==(self $left, self|\Tyhp\DecimalCoercible $right): bool => self::__isEqual($left, $right);
+        extension operator !=(self $left, self|\Tyhp\DecimalCoercible $right): bool => self::__isNotEqual($left, $right);
+        extension operator <(self $left, self|\Tyhp\DecimalCoercible $right): bool => self::__isLessThan($left, $right);
+        extension operator <=(self $left, self|\Tyhp\DecimalCoercible $right): bool => self::__isLessThanOrEqual($left, $right);
+        extension operator >(self $left, self|\Tyhp\DecimalCoercible $right): bool => self::__isGreaterThan($left, $right);
+        extension operator >=(self $left, self|\Tyhp\DecimalCoercible $right): bool => self::__isGreaterThanOrEqual($left, $right);
+        extension operator <=>(self $left, self|\Tyhp\DecimalCoercible $right): int => self::__compare($left, $right);
+        extension operator +(float|int|string $left, self $right): self => self::__add($left, $right);
+        extension operator -(float|int|string $left, self $right): self => self::__subtract($left, $right);
+        extension operator *(float|int|string $left, self $right): self => self::__multiply($left, $right);
+        extension operator /(float|int|string $left, self $right): self => self::__divide($left, $right);
+        extension operator %(float|int|string $left, self $right): self => self::__mod($left, $right);
+        extension operator ==(float|int|string $left, self $right): bool => self::__isEqual($left, $right);
+        extension operator !=(float|int|string $left, self $right): bool => self::__isNotEqual($left, $right);
+        extension operator <(float|int|string $left, self $right): bool => self::__isLessThan($left, $right);
+        extension operator <=(float|int|string $left, self $right): bool => self::__isLessThanOrEqual($left, $right);
+        extension operator >(float|int|string $left, self $right): bool => self::__isGreaterThan($left, $right);
+        extension operator >=(float|int|string $left, self $right): bool => self::__isGreaterThanOrEqual($left, $right);
+        extension operator <=>(float|int|string $left, self $right): int => self::__compare($left, $right);
         extension operator convert(int $value): self => self::__from($value);
         extension operator convert(float $value): self => self::__from($value);
         extension operator convert(string $value): self => self::__from($value);
@@ -101,12 +131,12 @@ namespace Tyhp {
     }
 }
 namespace Tyhp\Backend {
+    /**
+    * Operands are parsed exactly at their own scale. Each operation computes the exact result and
+    * truncates it toward zero to the requested scale, which is what bcmath does.
+    */
     final class IntegerScaledBackend implements \Tyhp\Backend\DecimalBackend {
         public function __construct(): void;
-        /**
-        * @internal
-        */
-        public static function resetWarningState(): void;
         public function add(string $a, string $b, int $scale): string;
         public function subtract(string $a, string $b, int $scale): string;
         public function multiply(string $a, string $b, int $scale): string;
@@ -114,6 +144,9 @@ namespace Tyhp\Backend {
         public function modulo(string $a, string $b, int $scale): string;
         public function power(string $base, int $exponent, int $scale): string;
         public function sqrt(string $value, int $scale): string;
+        /**
+        * Compares the two values after cutting each to `$scale` digits (the `bccomp()` contract).
+        */
         public function compare(string $a, string $b, int $scale): -1|0|1;
         public function negate(string $value): string;
         public function abs(string $value): string;

@@ -8,6 +8,10 @@ declare(strict_types=1);
 
 namespace Tyhp\Backend;
 
+/**
+ * Operands are parsed exactly at their own scale. Each operation computes the exact result and
+ * truncates it toward zero to the requested scale, which is what bcmath does.
+ */
 final class IntegerScaledBackend implements \Tyhp\Backend\DecimalBackend
 {
     private static bool $warningEmitted = false;
@@ -25,7 +29,19 @@ final class IntegerScaledBackend implements \Tyhp\Backend\DecimalBackend
     {
         self::$warningEmitted = false;
     }
-    private function toScaled(string $value, int $scale): string
+    /**
+     * Number of digits after the decimal point.
+     */
+    private function scaleOf(string $value): int
+    {
+        $dot = \strpos($value, '.');
+        return ($dot === false) ? 0 : ((\strlen($value) - $dot) - 1);
+    }
+    /**
+     * The value's digits as an integer string, i.e. the value multiplied by 10 to the power of its
+     * own scale. Nothing is cut off, and zero never carries a sign.
+     */
+    private function parse(string $value): string
     {
         $negative = false;
         if (\str_starts_with($value, '-')) {
@@ -35,13 +51,22 @@ final class IntegerScaledBackend implements \Tyhp\Backend\DecimalBackend
         $parts = \explode('.', $value, 2);
         $intPart = (string) (($parts[0] === '') ? '0' : $parts[0]);
         $fracPart = (string) ($parts[1] ?? '');
-        if (\strlen($fracPart) > $scale) {
-            $fracPart = \substr($fracPart, 0, $scale);
-        } else {
-            $fracPart = \str_pad($fracPart, $scale, '0');
-        }
         $combined = \ltrim($intPart . $fracPart, '0') ?: '0';
         return ($negative && ($combined !== '0')) ? ('-' . $combined) : $combined;
+    }
+    /**
+     * Moves an integer from one decimal scale to another. Widening is exact; narrowing truncates
+     * toward zero.
+     */
+    private function rescale(string $value, int $from, int $to): string
+    {
+        if (($to === $from) || ($value === '0')) {
+            return $value;
+        }
+        if ($to > $from) {
+            return $value . \str_repeat('0', $to - $from);
+        }
+        return $this->stringDiv($value, $this->stringPow10($from - $to));
     }
     private function fromScaled(string $value, int $scale): string
     {
@@ -277,95 +302,101 @@ final class IntegerScaledBackend implements \Tyhp\Backend\DecimalBackend
     }
     public function add(string $a, string $b, int $scale): string
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
-        return $this->fromScaled($this->stringAdd($sa, $sb), $scale);
+        $sa = $this->scaleOf($a);
+        $sb = $this->scaleOf($b);
+        $working = \max($sa, $sb);
+        $sum = $this->stringAdd($this->rescale($this->parse($a), $sa, $working), $this->rescale($this->parse($b), $sb, $working));
+        return $this->fromScaled($this->rescale($sum, $working, $scale), $scale);
     }
     public function subtract(string $a, string $b, int $scale): string
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
-        return $this->fromScaled($this->stringSub($sa, $sb), $scale);
+        $sa = $this->scaleOf($a);
+        $sb = $this->scaleOf($b);
+        $working = \max($sa, $sb);
+        $difference = $this->stringSub($this->rescale($this->parse($a), $sa, $working), $this->rescale($this->parse($b), $sb, $working));
+        return $this->fromScaled($this->rescale($difference, $working, $scale), $scale);
     }
     public function multiply(string $a, string $b, int $scale): string
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
-        $product = $this->stringMul($sa, $sb);
-        $divisor = $this->stringPow10($scale);
-        return $this->fromScaled($this->stringDiv($product, $divisor), $scale);
+        $product = $this->stringMul($this->parse($a), $this->parse($b));
+        return $this->fromScaled($this->rescale($product, $this->scaleOf($a) + $this->scaleOf($b), $scale), $scale);
     }
     public function divide(string $a, string $b, int $scale): string
     {
-        $sb = $this->toScaled($b, $scale);
-        if ($sb === '0') {
+        $divisor = $this->parse($b);
+        if ($divisor === '0') {
             throw new \DivisionByZeroError('Division by zero');
         }
-        $sa = $this->toScaled($a, $scale);
-        $multiplier = $this->stringPow10($scale);
-        $numerator = $this->stringMul($sa, $multiplier);
-        return $this->fromScaled($this->stringDiv($numerator, $sb), $scale);
+        $numerator = $this->rescale($this->parse($a), 0, $this->scaleOf($b) + $scale);
+        $denominator = $this->rescale($divisor, 0, $this->scaleOf($a));
+        return $this->fromScaled($this->stringDiv($numerator, $denominator), $scale);
     }
     public function modulo(string $a, string $b, int $scale): string
     {
-        $sb = $this->toScaled($b, $scale);
-        if ($sb === '0') {
+        $divisor = $this->parse($b);
+        if ($divisor === '0') {
             throw new \DivisionByZeroError('Modulo by zero');
         }
-        $sa = $this->toScaled($a, $scale);
-        $remainder = $this->stringMod($sa, $sb);
-        return $this->fromScaled($remainder, $scale);
+        $sa = $this->scaleOf($a);
+        $sb = $this->scaleOf($b);
+        $working = \max($sa, $sb);
+        $remainder = $this->stringMod($this->rescale($this->parse($a), $sa, $working), $this->rescale($divisor, $sb, $working));
+        return $this->fromScaled($this->rescale($remainder, $working, $scale), $scale);
     }
     public function power(string $base, int $exponent, int $scale): string
     {
-        if ($exponent === 0) {
-            return $this->fromScaled($this->toScaled('1', $scale), $scale);
+        if ($exponent < 0) {
+            throw new \InvalidArgumentException('Negative exponents are not supported');
         }
-        $sBase = $this->toScaled($base, $scale);
-        $scaleFactor = $this->stringPow10($scale);
-        $result = $this->toScaled('1', $scale);
-        $currentBase = $sBase;
-        while ($exponent > 0) {
-            if (($exponent & 1) === 1) {
-                $result = $this->stringDiv($this->stringMul($result, $currentBase), $scaleFactor);
+        $result = '1';
+        $currentBase = $this->parse($base);
+        $remaining = $exponent;
+        while ($remaining > 0) {
+            if (($remaining & 1) === 1) {
+                $result = $this->stringMul($result, $currentBase);
             }
-            $exponent >>= 1;
-            if ($exponent > 0) {
-                $currentBase = $this->stringDiv($this->stringMul($currentBase, $currentBase), $scaleFactor);
+            $remaining >>= 1;
+            if ($remaining > 0) {
+                $currentBase = $this->stringMul($currentBase, $currentBase);
             }
         }
-        return $this->fromScaled($result, $scale);
+        return $this->fromScaled($this->rescale($result, $this->scaleOf($base) * $exponent, $scale), $scale);
     }
     public function sqrt(string $value, int $scale): string
     {
-        $sValue = $this->toScaled($value, $scale);
-        $negative = \str_starts_with($sValue, '-');
-        if ($negative) {
+        $parsed = $this->parse($value);
+        if (\str_starts_with($parsed, '-')) {
             throw new \InvalidArgumentException('Square root of a negative number is not supported');
         }
-        if ($sValue === '0') {
+        if ($parsed === '0') {
             return $this->fromScaled('0', $scale);
         }
-        $multiplier = $this->stringPow10($scale);
-        $scaled = $this->stringMul($sValue, $multiplier);
-        $guess = $scaled;
+        $scaled = $this->rescale($parsed, $this->scaleOf($value), 2 * $scale);
+        if ($scaled === '0') {
+            return $this->fromScaled('0', $scale);
+        }
+        $guess = $this->stringPow10(\intdiv(\strlen($scaled) + 1, 2));
         $two = '2';
-        $maxIterations = 100;
-        for ($i = 0; $i < $maxIterations; $i++) {
+        $converged = false;
+        while (!$converged) {
             $quotient = $this->stringDiv($scaled, $guess);
             $sum = $this->stringAdd($guess, $quotient);
             $newGuess = $this->stringDiv($sum, $two);
-            if (($newGuess === $guess) || ($this->stringAdd($newGuess, '1') === $guess)) {
-                break;
+            if ($this->unsignedCompare($newGuess, $guess) >= 0) {
+                $converged = true;
+            } else {
+                $guess = $newGuess;
             }
-            $guess = $newGuess;
         }
         return $this->fromScaled($guess, $scale);
     }
+    /**
+     * Compares the two values after cutting each to `$scale` digits (the `bccomp()` contract).
+     */
     public function compare(string $a, string $b, int $scale): int
     {
-        $sa = $this->toScaled($a, $scale);
-        $sb = $this->toScaled($b, $scale);
+        $sa = $this->rescale($this->parse($a), $this->scaleOf($a), $scale);
+        $sb = $this->rescale($this->parse($b), $this->scaleOf($b), $scale);
         $negA = \str_starts_with($sa, '-');
         $negB = \str_starts_with($sb, '-');
         if ($negA && !$negB) {
