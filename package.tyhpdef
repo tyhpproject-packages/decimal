@@ -2,7 +2,7 @@
 /**
  * AUTO-GENERATED, DO NOT EDIT
  * Compiler: 805.1.0.0
- * Generated: 2026-10-15T16:29:46.8382890Z
+ * Generated: 2026-10-15T16:29:54.7934790Z
  */
 namespace Tyhp {
     function decimal(float|int|string|\Tyhp\Contracts\DecimalConvertible|null $value = null): \Tyhp\Decimal;
